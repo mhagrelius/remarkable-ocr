@@ -8,11 +8,10 @@ from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from remarkable_ocr import __version__
-from remarkable_ocr.config import Settings
 from remarkable_ocr.logging import setup_logging, get_logger
 from remarkable_ocr.ocr import check_ollama_health, get_available_models, process_image
 from remarkable_ocr.pdf import extract_pages, get_page_count
-from remarkable_ocr.processor import clean_text, is_blank_page
+from remarkable_ocr.processor import clean_text
 from remarkable_ocr.writer import write_output
 
 app = typer.Typer(
@@ -93,18 +92,12 @@ def process(
     host: Annotated[
         str, typer.Option("--host", help="Ollama API host")
     ] = "http://localhost:11434",
-    confidence_threshold: Annotated[
-        float, typer.Option("--confidence-threshold", help="Minimum confidence")
-    ] = 0.5,
     output_format: Annotated[
         str, typer.Option("--output-format", "-f", help="Output format")
     ] = "markdown",
     timeout: Annotated[
         int, typer.Option("--timeout", help="Timeout per page in seconds")
     ] = 60,
-    keep_temp_images: Annotated[
-        bool, typer.Option("--keep-temp-images", help="Keep temporary images")
-    ] = False,
     verbose: Annotated[
         bool, typer.Option("--verbose", "-v", help="Enable debug logging")
     ] = False,
