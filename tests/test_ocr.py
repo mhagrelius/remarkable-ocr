@@ -1,6 +1,6 @@
 """Tests for OCR processing."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from PIL import Image
@@ -116,3 +116,54 @@ def test_process_image_blank_page(mock_ollama, sample_image):
     )
 
     assert result.text == "[blank page]"
+
+
+@patch("remarkable_ocr.ocr.ollama")
+def test_get_available_models_success(mock_ollama):
+    """get_available_models should return vision models."""
+    from remarkable_ocr.ocr import get_available_models
+
+    mock_ollama.Client.return_value.list.return_value = {
+        "models": [
+            {"name": "qwen2.5-vl:7b"},
+            {"name": "llava:13b"},
+            {"name": "llama3:8b"},  # Not a vision model
+        ]
+    }
+
+    models = get_available_models("http://localhost:11434")
+
+    assert "qwen2.5-vl:7b" in models
+    assert "llava:13b" in models
+    assert "llama3:8b" not in models  # Filtered out
+
+
+@patch("remarkable_ocr.ocr.ollama")
+def test_get_available_models_error(mock_ollama):
+    """get_available_models should return empty list on error."""
+    from remarkable_ocr.ocr import get_available_models
+
+    mock_ollama.Client.return_value.list.side_effect = Exception("Connection refused")
+
+    models = get_available_models("http://localhost:11434")
+
+    assert models == []
+
+
+@patch("remarkable_ocr.ocr.ollama")
+def test_process_image_error(mock_ollama, sample_image):
+    """process_image should return [OCR Failed] on error."""
+    from remarkable_ocr.ocr import process_image
+
+    mock_ollama.Client.return_value.chat.side_effect = Exception("API Error")
+
+    result = process_image(
+        image=sample_image,
+        page_num=1,
+        model="qwen2.5-vl:7b",
+        host="http://localhost:11434",
+        timeout=60,
+    )
+
+    assert result.text == "[OCR Failed]"
+    assert result.page_num == 1
