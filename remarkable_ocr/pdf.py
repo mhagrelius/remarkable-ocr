@@ -33,7 +33,7 @@ def extract_pages(
     doc = fitz.open(pdf_path)
 
     try:
-        for page_num, page in enumerate(doc, start=1):
+        for page_num, page in enumerate(doc, start=1):  # type: ignore[arg-type]
             # Calculate zoom factor to achieve target width
             zoom = width / page.rect.width
             matrix = fitz.Matrix(zoom, zoom)
@@ -42,7 +42,7 @@ def extract_pages(
             pixmap = page.get_pixmap(matrix=matrix)
 
             # Convert to PIL Image
-            image = Image.frombytes("RGB", [pixmap.width, pixmap.height], pixmap.samples)
+            image = Image.frombytes("RGB", (pixmap.width, pixmap.height), pixmap.samples)
 
             logger.debug(f"Page {page_num}: {image.width}x{image.height}px")
             yield page_num, image
@@ -66,10 +66,8 @@ def get_page_count(pdf_path: Path) -> int:
     if not pdf_path.exists():
         raise FileNotFoundError(f"PDF file not found: {pdf_path}")
 
-    doc = fitz.open(pdf_path)
-    count = len(doc)
-    doc.close()
-    return count
+    with fitz.open(pdf_path) as doc:
+        return len(doc)
 
 
 def save_temp_images(pdf_path: Path, cache_dir: Path, width: int = 1288) -> list[Path]:
