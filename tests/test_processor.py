@@ -1,7 +1,5 @@
 """Tests for text processing."""
 
-import pytest
-
 
 def test_clean_text_strips_whitespace():
     """clean_text should strip leading/trailing whitespace."""

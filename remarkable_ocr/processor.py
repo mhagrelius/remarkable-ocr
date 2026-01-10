@@ -9,7 +9,6 @@ logger = get_logger("processor")
 # Common OCR artifacts and their corrections
 OCR_CORRECTIONS = [
     (r"\brn(?=[aeiou])", "m"),  # rn at word start before vowel -> m (e.g., rnorning -> morning)
-    (r"(?<=[a-z])l(?=[a-z])", "l"),  # Keep l, but could add l/1 confusion fixes
     (r"0(?=[a-zA-Z])", "O"),  # 0 before letter -> O
     (r"(?<=[a-zA-Z])0", "o"),  # 0 after letter -> o
 ]
