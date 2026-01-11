@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "remarkable-ocr"
-version = "0.1.0"
+version = "0.2.0"
 description = "Extract handwritten notes from Remarkable PDF exports using local OCR"
 readme = "README.md"
 license = "MIT"

@@ -8,11 +8,15 @@ from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from remarkable_ocr import __version__
+from remarkable_ocr.config import Settings
 from remarkable_ocr.logging import setup_logging, get_logger
 from remarkable_ocr.ocr import check_ollama_health, get_available_models, process_image
 from remarkable_ocr.pdf import extract_pages, get_page_count
 from remarkable_ocr.processor import clean_text
 from remarkable_ocr.writer import write_output
+
+# Load settings for default values
+settings = Settings()
 
 app = typer.Typer(
     name="remarkable-ocr",
@@ -24,7 +28,7 @@ console = Console()
 err_console = Console(stderr=True)
 
 
-def version_callback(value: bool):
+def version_callback(value: bool) -> None:
     """Print version and exit."""
     if value:
         console.print(f"remarkable-ocr {__version__}")
@@ -37,16 +41,16 @@ def main(
         Optional[bool],
         typer.Option("--version", "-V", callback=version_callback, is_eager=True),
     ] = None,
-):
+) -> None:
     """Remarkable OCR - Extract handwritten notes from Remarkable PDFs."""
     pass
 
 
 @app.command()
 def health(
-    model: Annotated[str, typer.Option("--model", "-m")] = "qwen2.5-vl:7b",
-    host: Annotated[str, typer.Option("--host")] = "http://localhost:11434",
-):
+    model: Annotated[str, typer.Option("--model", "-m")] = settings.model,
+    host: Annotated[str, typer.Option("--host")] = settings.ollama_host,
+) -> None:
     """Check if Ollama is running and model is available."""
     console.print(f"Checking Ollama at {host}...")
 
@@ -62,8 +66,8 @@ def health(
 
 @app.command()
 def models(
-    host: Annotated[str, typer.Option("--host")] = "http://localhost:11434",
-):
+    host: Annotated[str, typer.Option("--host")] = settings.ollama_host,
+) -> None:
     """List available vision models from Ollama."""
     available = get_available_models(host)
 
@@ -85,23 +89,23 @@ def process(
     pdf_path: Annotated[Path, typer.Argument(help="Path to PDF file")],
     output: Annotated[
         Path, typer.Option("--output", "-o", help="Output directory")
-    ] = Path("./output"),
+    ] = settings.output_dir,
     model: Annotated[
         str, typer.Option("--model", "-m", help="Ollama model to use")
-    ] = "qwen2.5-vl:7b",
+    ] = settings.model,
     host: Annotated[
         str, typer.Option("--host", help="Ollama API host")
-    ] = "http://localhost:11434",
+    ] = settings.ollama_host,
     output_format: Annotated[
         str, typer.Option("--output-format", "-f", help="Output format")
-    ] = "markdown",
+    ] = settings.output_format,
     timeout: Annotated[
         int, typer.Option("--timeout", help="Timeout per page in seconds")
-    ] = 60,
+    ] = settings.timeout,
     verbose: Annotated[
         bool, typer.Option("--verbose", "-v", help="Enable debug logging")
     ] = False,
-):
+) -> None:
     """Process a Remarkable PDF and extract handwritten text."""
     # Setup logging
     log_level = "DEBUG" if verbose else "INFO"

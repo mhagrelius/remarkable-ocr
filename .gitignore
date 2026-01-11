@@ -29,6 +29,11 @@ htmlcov/
 .vscode/
 .idea/
 
+# Environment
+.env
+.env.local
+.env.*.local
+
 # Project
 output/
 .remarkable_cache/

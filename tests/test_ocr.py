@@ -1,9 +1,24 @@
 """Tests for OCR processing."""
 
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
+import httpx
 import pytest
 from PIL import Image
+
+
+def _mock_model(name: str) -> Mock:
+    """Create a mock model object with .model attribute."""
+    m = Mock()
+    m.model = name
+    return m
+
+
+def _mock_list_response(model_names: list[str]) -> Mock:
+    """Create a mock list response with .models attribute."""
+    response = Mock()
+    response.models = [_mock_model(name) for name in model_names]
+    return response
 
 
 @pytest.fixture
@@ -46,7 +61,7 @@ def test_check_ollama_health_success(mock_ollama):
     """check_ollama_health should return True when Ollama is available."""
     from remarkable_ocr.ocr import check_ollama_health
 
-    mock_ollama.Client.return_value.list.return_value = {"models": [{"name": "qwen2.5-vl:7b"}]}
+    mock_ollama.Client.return_value.list.return_value = _mock_list_response(["qwen2.5-vl:7b"])
 
     result = check_ollama_health("http://localhost:11434", "qwen2.5-vl:7b")
 
@@ -58,7 +73,7 @@ def test_check_ollama_health_model_missing(mock_ollama):
     """check_ollama_health should return False when model not found."""
     from remarkable_ocr.ocr import check_ollama_health
 
-    mock_ollama.Client.return_value.list.return_value = {"models": [{"name": "other-model"}]}
+    mock_ollama.Client.return_value.list.return_value = _mock_list_response(["other-model"])
 
     result = check_ollama_health("http://localhost:11434", "qwen2.5-vl:7b")
 
@@ -70,7 +85,7 @@ def test_check_ollama_health_connection_error(mock_ollama):
     """check_ollama_health should return False on connection error."""
     from remarkable_ocr.ocr import check_ollama_health
 
-    mock_ollama.Client.return_value.list.side_effect = Exception("Connection refused")
+    mock_ollama.Client.return_value.list.side_effect = httpx.ConnectError("Connection refused")
 
     result = check_ollama_health("http://localhost:11434", "qwen2.5-vl:7b")
 
@@ -123,13 +138,11 @@ def test_get_available_models_success(mock_ollama):
     """get_available_models should return vision models."""
     from remarkable_ocr.ocr import get_available_models
 
-    mock_ollama.Client.return_value.list.return_value = {
-        "models": [
-            {"name": "qwen2.5-vl:7b"},
-            {"name": "llava:13b"},
-            {"name": "llama3:8b"},  # Not a vision model
-        ]
-    }
+    mock_ollama.Client.return_value.list.return_value = _mock_list_response([
+        "qwen2.5-vl:7b",
+        "llava:13b",
+        "llama3:8b",  # Not a vision model
+    ])
 
     models = get_available_models("http://localhost:11434")
 
@@ -143,7 +156,7 @@ def test_get_available_models_error(mock_ollama):
     """get_available_models should return empty list on error."""
     from remarkable_ocr.ocr import get_available_models
 
-    mock_ollama.Client.return_value.list.side_effect = Exception("Connection refused")
+    mock_ollama.Client.return_value.list.side_effect = httpx.ConnectError("Connection refused")
 
     models = get_available_models("http://localhost:11434")
 
@@ -155,7 +168,7 @@ def test_process_image_error(mock_ollama, sample_image):
     """process_image should return [OCR Failed] on error."""
     from remarkable_ocr.ocr import process_image
 
-    mock_ollama.Client.return_value.chat.side_effect = Exception("API Error")
+    mock_ollama.Client.return_value.chat.side_effect = httpx.TimeoutException("Timeout")
 
     result = process_image(
         image=sample_image,

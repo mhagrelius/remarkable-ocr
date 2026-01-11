@@ -1,140 +1,159 @@
-# Remarkable OCR
+# remarkable-ocr
 
-Extract handwritten notes from Remarkable tablet PDF exports using local OCR.
-
-## Features
-
-- **Local Processing**: All OCR runs locally via Ollama - no cloud APIs
-- **High Accuracy**: Uses Qwen2.5-VL vision model optimized for handwriting
-- **Multiple Formats**: Output as Markdown, JSON, or plain text
-- **Batch Processing**: Process multiple PDFs in one command
+Extract handwritten text from reMarkable tablet PDF exports using local OCR via Ollama.
 
 ## Prerequisites
 
 - Python 3.10+
-- [Ollama](https://ollama.ai/) running locally
+- [Ollama](https://ollama.ai) running locally
+
+```bash
+ollama serve
+ollama pull qwen2.5-vl:7b
+```
 
 ## Installation
 
 ```bash
-# Clone the repository
+pip install remarkable-ocr
+```
+
+From source:
+
+```bash
 git clone https://github.com/yourusername/remarkable-ocr.git
 cd remarkable-ocr
-
-# Install in development mode
-pip install -e ".[dev]"
-
-# Pull the vision model
-ollama pull qwen2.5-vl:7b
+pip install .
 ```
 
-## Usage
-
-### Basic Usage
+## Quick Start
 
 ```bash
-# Process a single PDF
-remarkable-ocr process notes.pdf
-
-# Output goes to ./output/notes.md by default
+remarkable-ocr health              # Check Ollama connection
+remarkable-ocr process notes.pdf   # Extract text to ./output/notes.md
 ```
 
-### Options
+## CLI Commands
+
+### `process`
 
 ```bash
-remarkable-ocr process notes.pdf \
-  --output ./my-notes/ \
-  --model qwen2.5-vl:7b \
-  --output-format markdown \
-  --verbose
+remarkable-ocr process <pdf> [OPTIONS]
 ```
-
-### Available Commands
-
-```bash
-# Check Ollama status
-remarkable-ocr health
-
-# List available vision models
-remarkable-ocr models
-
-# Process PDF
-remarkable-ocr process <pdf_path> [options]
-```
-
-### CLI Options
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--output, -o` | `./output` | Output directory |
-| `--model, -m` | `qwen2.5-vl:7b` | Ollama model |
-| `--output-format, -f` | `markdown` | Format: markdown, json, txt |
+| `-o, --output` | `./output` | Output directory |
+| `-f, --output-format` | `markdown` | `markdown`, `json`, or `txt` |
+| `-m, --model` | `qwen2.5-vl:7b` | Ollama vision model |
+| `--host` | `http://localhost:11434` | Ollama API URL |
 | `--timeout` | `60` | Seconds per page |
-| `--verbose, -v` | False | Debug logging |
+| `-v, --verbose` | - | Debug logging |
 
-## Environment Variables
+### `health`
+
+Check Ollama connection and model availability.
+
+```bash
+remarkable-ocr health [-m MODEL] [--host HOST]
+```
+
+### `models`
+
+List available vision models.
+
+```bash
+remarkable-ocr models [--host HOST]
+```
+
+## Configuration
+
+Set defaults via environment variables or `.env` file:
 
 ```bash
 REMARKABLE_OCR_MODEL=qwen2.5-vl:7b
 REMARKABLE_OCR_OLLAMA_HOST=http://localhost:11434
 REMARKABLE_OCR_OUTPUT_DIR=./output
+REMARKABLE_OCR_OUTPUT_FORMAT=markdown
 REMARKABLE_OCR_TIMEOUT=60
+REMARKABLE_OCR_LOG_LEVEL=INFO
 ```
+
+## Library Usage
+
+```python
+from pathlib import Path
+from remarkable_ocr.pdf import extract_pages
+from remarkable_ocr.ocr import process_image, check_ollama_health
+from remarkable_ocr.processor import clean_text
+
+# Verify Ollama is ready
+if not check_ollama_health("http://localhost:11434", "qwen2.5-vl:7b"):
+    raise RuntimeError("Ollama not available")
+
+# Process PDF
+for page_num, image in extract_pages(Path("notes.pdf")):
+    result = process_image(
+        image=image,
+        page_num=page_num,
+        model="qwen2.5-vl:7b",
+        host="http://localhost:11434",
+        timeout=60,
+    )
+    print(f"Page {page_num}: {clean_text(result.text)}")
+```
+
+### API Reference
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `pdf.extract_pages(path)` | `Iterator[(int, Image)]` | Yields page images |
+| `pdf.get_page_count(path)` | `int` | Page count |
+| `ocr.process_image(...)` | `OCRResult` | Extract text from image |
+| `ocr.check_ollama_health(host, model)` | `bool` | Check Ollama status |
+| `ocr.get_available_models(host)` | `list[str]` | List vision models |
+| `processor.clean_text(raw)` | `str` | Fix OCR artifacts |
+| `writer.write_output(...)` | `Path` | Write results to file |
 
 ## Output Formats
 
-### Markdown (default)
+**Markdown** (default): YAML frontmatter + page sections
 
 ```markdown
 ---
 source: notes.pdf
 date_processed: 2026-01-10T14:30:00Z
 pages: 3
-confidence_avg: 0.78
 model: qwen2.5-vl:7b
 ---
 
 # Page 1
 
-[Extracted text...]
+[extracted text]
 ```
 
-### JSON
+**JSON**: Structured with metadata and pages array
 
-```json
-{
-  "metadata": { "source": "notes.pdf", "pages": 3 },
-  "pages": [{ "page_number": 1, "text": "..." }]
-}
+**Plain text**: Simple page markers
+
+## Troubleshooting
+
+**Cannot connect to Ollama**
+```bash
+ollama serve           # Start Ollama
+ollama pull qwen2.5-vl:7b  # Pull model
 ```
+
+**Slow processing**: Use a smaller model (`qwen2.5-vl:3b`) or ensure GPU acceleration is enabled in Ollama.
 
 ## Development
 
 ```bash
-# Run tests (unit tests only)
-pytest -m "not integration"
-
-# Run all tests (requires Ollama)
-pytest
-
-# Run with coverage
-pytest --cov=remarkable_ocr
+pip install -e ".[dev]"
+pytest -m "not integration"  # Unit tests only
+pytest                       # All tests (requires Ollama)
+pytest --cov=remarkable_ocr  # With coverage
 ```
-
-## Troubleshooting
-
-**Ollama not found**
-```bash
-# Make sure Ollama is running
-ollama serve
-
-# Pull the required model
-ollama pull qwen2.5-vl:7b
-```
-
-**Slow processing**
-- Use the smaller model: `--model qwen2.5-vl:3b`
-- Ensure GPU is being used by Ollama
 
 ## License
 

@@ -20,9 +20,9 @@ def test_settings_defaults():
     assert settings.model == "qwen2.5-vl:7b"
     assert settings.ollama_host == "http://localhost:11434"
     assert settings.output_dir == Path("./output")
-    assert settings.confidence_threshold == 0.5
     assert settings.timeout == 60
     assert settings.log_level == "INFO"
+    assert settings.output_format == "markdown"
 
 
 def test_settings_from_env(monkeypatch):
@@ -47,9 +47,6 @@ def test_settings_from_env(monkeypatch):
 def test_settings_validation():
     """Settings should validate values."""
     from remarkable_ocr.config import Settings
-
-    with pytest.raises(ValueError):
-        Settings(confidence_threshold=1.5)  # Must be 0-1
 
     with pytest.raises(ValueError):
         Settings(timeout=-1)  # Must be positive
