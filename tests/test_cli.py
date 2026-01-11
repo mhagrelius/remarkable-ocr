@@ -14,12 +14,13 @@ FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 def test_cli_version():
     """CLI should show version with --version."""
+    from remarkable_ocr import __version__
     from remarkable_ocr.cli import app
 
     result = runner.invoke(app, ["--version"])
 
     assert result.exit_code == 0
-    assert "0.1.0" in result.stdout
+    assert __version__ in result.stdout
 
 
 def test_cli_help():

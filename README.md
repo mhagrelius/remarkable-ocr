@@ -9,7 +9,7 @@ Extract handwritten text from reMarkable tablet PDF exports using local OCR via 
 
 ```bash
 ollama serve
-ollama pull qwen2.5-vl:7b
+ollama pull ministral-3:14b-instruct-2512-q8_0
 ```
 
 ## Installation
@@ -45,7 +45,7 @@ remarkable-ocr process <pdf> [OPTIONS]
 |--------|---------|-------------|
 | `-o, --output` | `./output` | Output directory |
 | `-f, --output-format` | `markdown` | `markdown`, `json`, or `txt` |
-| `-m, --model` | `qwen2.5-vl:7b` | Ollama vision model |
+| `-m, --model` | `ministral-3:14b-instruct-2512-q8_0` | Ollama vision model |
 | `--host` | `http://localhost:11434` | Ollama API URL |
 | `--timeout` | `60` | Seconds per page |
 | `-v, --verbose` | - | Debug logging |
@@ -71,7 +71,7 @@ remarkable-ocr models [--host HOST]
 Set defaults via environment variables or `.env` file:
 
 ```bash
-REMARKABLE_OCR_MODEL=qwen2.5-vl:7b
+REMARKABLE_OCR_MODEL=ministral-3:14b-instruct-2512-q8_0
 REMARKABLE_OCR_OLLAMA_HOST=http://localhost:11434
 REMARKABLE_OCR_OUTPUT_DIR=./output
 REMARKABLE_OCR_OUTPUT_FORMAT=markdown
@@ -88,7 +88,7 @@ from remarkable_ocr.ocr import process_image, check_ollama_health
 from remarkable_ocr.processor import clean_text
 
 # Verify Ollama is ready
-if not check_ollama_health("http://localhost:11434", "qwen2.5-vl:7b"):
+if not check_ollama_health("http://localhost:11434", "ministral-3:14b-instruct-2512-q8_0"):
     raise RuntimeError("Ollama not available")
 
 # Process PDF
@@ -96,7 +96,7 @@ for page_num, image in extract_pages(Path("notes.pdf")):
     result = process_image(
         image=image,
         page_num=page_num,
-        model="qwen2.5-vl:7b",
+        model="ministral-3:14b-instruct-2512-q8_0",
         host="http://localhost:11434",
         timeout=60,
     )
@@ -124,7 +124,7 @@ for page_num, image in extract_pages(Path("notes.pdf")):
 source: notes.pdf
 date_processed: 2026-01-10T14:30:00Z
 pages: 3
-model: qwen2.5-vl:7b
+model: ministral-3:14b-instruct-2512-q8_0
 ---
 
 # Page 1
@@ -141,10 +141,10 @@ model: qwen2.5-vl:7b
 **Cannot connect to Ollama**
 ```bash
 ollama serve           # Start Ollama
-ollama pull qwen2.5-vl:7b  # Pull model
+ollama pull ministral-3:14b-instruct-2512-q8_0  # Pull model
 ```
 
-**Slow processing**: Use a smaller model (`qwen2.5-vl:3b`) or ensure GPU acceleration is enabled in Ollama.
+**Slow processing**: Use a smaller model (`ministral-3:latest`) or ensure GPU acceleration is enabled in Ollama.
 
 ## Development
 
