@@ -17,7 +17,7 @@ def test_settings_defaults():
 
     settings = Settings()
 
-    assert settings.model == "ministral-3:latest"
+    assert settings.model == "ministral-3:14b-instruct-2512-q8_0"
     assert settings.ollama_host == "http://localhost:11434"
     assert settings.output_dir == Path("./output")
     assert settings.timeout == 60

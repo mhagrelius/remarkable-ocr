@@ -10,7 +10,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
-    model: str = "ministral-3:latest"
+    model: str = "ministral-3:14b-instruct-2512-q8_0"
     ollama_host: str = "http://localhost:11434"
     output_dir: Path = Path("./output")
     timeout: int = 60
