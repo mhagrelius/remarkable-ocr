@@ -1,8 +1,9 @@
 """Tests for OCR processing."""
 
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch, call
 
 import httpx
+import ollama
 import pytest
 from PIL import Image
 
@@ -169,6 +170,8 @@ def test_process_image_error(mock_ollama, sample_image):
     from remarkable_ocr.ocr import process_image
 
     mock_ollama.Client.return_value.chat.side_effect = httpx.TimeoutException("Timeout")
+    # Must preserve the real ResponseError class for exception handling
+    mock_ollama.ResponseError = ollama.ResponseError
 
     result = process_image(
         image=sample_image,
@@ -180,3 +183,202 @@ def test_process_image_error(mock_ollama, sample_image):
 
     assert result.text == "[OCR Failed]"
     assert result.page_num == 1
+
+
+# Tests for model loading retry logic
+
+
+class TestIsModelLoadingError:
+    """Tests for _is_model_loading_error function."""
+
+    def test_load_request_error(self):
+        """Should detect 'do load request' errors."""
+        from remarkable_ocr.ocr import _is_model_loading_error
+
+        error = ollama.ResponseError("do load request: Post http://127.0.0.1:38035/load: EOF")
+        assert _is_model_loading_error(error) is True
+
+    def test_eof_error(self):
+        """Should detect EOF errors."""
+        from remarkable_ocr.ocr import _is_model_loading_error
+
+        error = ollama.ResponseError("EOF")
+        assert _is_model_loading_error(error) is True
+
+    def test_connection_reset_error(self):
+        """Should detect connection reset errors."""
+        from remarkable_ocr.ocr import _is_model_loading_error
+
+        error = httpx.ReadError("Connection reset by peer")
+        assert _is_model_loading_error(error) is True
+
+    def test_broken_pipe_error(self):
+        """Should detect broken pipe errors."""
+        from remarkable_ocr.ocr import _is_model_loading_error
+
+        error = httpx.ReadError("Broken pipe")
+        assert _is_model_loading_error(error) is True
+
+    def test_unrelated_error(self):
+        """Should not detect unrelated errors as model loading."""
+        from remarkable_ocr.ocr import _is_model_loading_error
+
+        error = ollama.ResponseError("Invalid model format")
+        assert _is_model_loading_error(error) is False
+
+    def test_timeout_error(self):
+        """Should not detect timeout as model loading error."""
+        from remarkable_ocr.ocr import _is_model_loading_error
+
+        error = Exception("Request timed out")
+        assert _is_model_loading_error(error) is False
+
+
+class TestRetryOnModelLoading:
+    """Tests for _retry_on_model_loading function."""
+
+    def test_success_no_retry(self):
+        """Should return result immediately on success."""
+        from remarkable_ocr.ocr import _retry_on_model_loading
+
+        mock_func = Mock(return_value="success")
+
+        result = _retry_on_model_loading(mock_func, max_retries=3, initial_delay=0.01)
+
+        assert result == "success"
+        assert mock_func.call_count == 1
+
+    @patch("remarkable_ocr.ocr.time.sleep")
+    def test_retry_on_loading_error(self, mock_sleep):
+        """Should retry on model loading errors."""
+        from remarkable_ocr.ocr import _retry_on_model_loading
+
+        mock_func = Mock(
+            side_effect=[
+                ollama.ResponseError("do load request: EOF"),
+                ollama.ResponseError("do load request: EOF"),
+                "success",
+            ]
+        )
+
+        result = _retry_on_model_loading(mock_func, max_retries=3, initial_delay=0.01)
+
+        assert result == "success"
+        assert mock_func.call_count == 3
+        assert mock_sleep.call_count == 2
+
+    @patch("remarkable_ocr.ocr.time.sleep")
+    def test_exponential_backoff(self, mock_sleep):
+        """Should use exponential backoff for delays."""
+        from remarkable_ocr.ocr import _retry_on_model_loading
+
+        mock_func = Mock(
+            side_effect=[
+                ollama.ResponseError("do load request: EOF"),
+                ollama.ResponseError("do load request: EOF"),
+                "success",
+            ]
+        )
+
+        result = _retry_on_model_loading(
+            mock_func, max_retries=3, initial_delay=1.0, backoff_multiplier=2.0
+        )
+
+        assert result == "success"
+        # First retry: 1.0s, second retry: 2.0s
+        assert mock_sleep.call_args_list == [call(1.0), call(2.0)]
+
+    @patch("remarkable_ocr.ocr.time.sleep")
+    def test_max_retries_exhausted(self, mock_sleep):
+        """Should raise after max retries exhausted."""
+        from remarkable_ocr.ocr import _retry_on_model_loading
+
+        mock_func = Mock(side_effect=ollama.ResponseError("do load request: EOF"))
+
+        with pytest.raises(ollama.ResponseError, match="load"):
+            _retry_on_model_loading(mock_func, max_retries=2, initial_delay=0.01)
+
+        # Initial attempt + 2 retries = 3 calls
+        assert mock_func.call_count == 3
+
+    def test_no_retry_on_unrelated_error(self):
+        """Should not retry on non-loading errors."""
+        from remarkable_ocr.ocr import _retry_on_model_loading
+
+        mock_func = Mock(side_effect=ollama.ResponseError("Invalid model"))
+
+        with pytest.raises(ollama.ResponseError, match="Invalid"):
+            _retry_on_model_loading(mock_func, max_retries=3, initial_delay=0.01)
+
+        # Should fail immediately without retry
+        assert mock_func.call_count == 1
+
+    @patch("remarkable_ocr.ocr.time.sleep")
+    def test_retry_on_httpx_read_error(self, mock_sleep):
+        """Should retry on httpx.ReadError with loading indicators."""
+        from remarkable_ocr.ocr import _retry_on_model_loading
+
+        mock_func = Mock(
+            side_effect=[
+                httpx.ReadError("Connection reset by peer"),
+                "success",
+            ]
+        )
+
+        result = _retry_on_model_loading(mock_func, max_retries=3, initial_delay=0.01)
+
+        assert result == "success"
+        assert mock_func.call_count == 2
+
+
+class TestProcessImageRetry:
+    """Tests for process_image retry behavior."""
+
+    @patch("remarkable_ocr.ocr.time.sleep")
+    @patch("remarkable_ocr.ocr.ollama")
+    def test_process_image_retries_on_loading_error(self, mock_ollama, mock_sleep, sample_image):
+        """process_image should retry on model loading errors."""
+        from remarkable_ocr.ocr import process_image
+
+        # First two calls fail with loading error, third succeeds
+        mock_ollama.Client.return_value.chat.side_effect = [
+            ollama.ResponseError("do load request: EOF"),
+            ollama.ResponseError("do load request: EOF"),
+            {"message": {"content": "Extracted text"}},
+        ]
+        mock_ollama.ResponseError = ollama.ResponseError
+
+        result = process_image(
+            image=sample_image,
+            page_num=1,
+            model="qwen2.5-vl:7b",
+            host="http://localhost:11434",
+            timeout=60,
+        )
+
+        assert result.text == "Extracted text"
+        assert mock_ollama.Client.return_value.chat.call_count == 3
+
+    @patch("remarkable_ocr.ocr.time.sleep")
+    @patch("remarkable_ocr.ocr.ollama")
+    def test_process_image_fails_after_max_retries(self, mock_ollama, mock_sleep, sample_image):
+        """process_image should fail gracefully after max retries."""
+        from remarkable_ocr.ocr import process_image
+
+        # All calls fail with loading error
+        mock_ollama.Client.return_value.chat.side_effect = ollama.ResponseError(
+            "do load request: EOF"
+        )
+        mock_ollama.ResponseError = ollama.ResponseError
+
+        result = process_image(
+            image=sample_image,
+            page_num=1,
+            model="qwen2.5-vl:7b",
+            host="http://localhost:11434",
+            timeout=60,
+        )
+
+        assert result.text == "[OCR Failed]"
+        # Initial attempt + 5 retries = 6 calls
+        assert mock_ollama.Client.return_value.chat.call_count == 6

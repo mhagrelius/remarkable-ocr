@@ -8,9 +8,19 @@ from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from remarkable_ocr import __version__
+from remarkable_ocr.chunking import (
+    ChunkOCRResult,
+    merge_chunk_texts,
+    split_image_into_chunks,
+)
 from remarkable_ocr.config import Settings
 from remarkable_ocr.logging import setup_logging, get_logger
-from remarkable_ocr.ocr import check_ollama_health, get_available_models, process_image
+from remarkable_ocr.ocr import (
+    OCRResult,
+    check_ollama_health,
+    get_available_models,
+    process_image,
+)
 from remarkable_ocr.pdf import extract_pages, get_page_count
 from remarkable_ocr.processor import clean_text
 from remarkable_ocr.writer import write_output
@@ -105,12 +115,44 @@ def process(
     verbose: Annotated[
         bool, typer.Option("--verbose", "-v", help="Enable debug logging")
     ] = False,
+    chunk_pages: Annotated[
+        bool, typer.Option("--chunk-pages/--no-chunk-pages",
+                          help="Split pages into overlapping chunks for better OCR")
+    ] = settings.chunk_pages,
+    chunk_count: Annotated[
+        int, typer.Option("--chunks", help="Number of chunks per page (2-4) for fixed chunking")
+    ] = settings.chunk_count,
+    overlap_percent: Annotated[
+        float, typer.Option("--overlap", help="Overlap percentage between chunks (0-50)")
+    ] = settings.overlap_percent,
+    smart_chunking: Annotated[
+        bool, typer.Option("--smart-chunk/--no-smart-chunk",
+                          help="Use whitespace detection for natural chunk boundaries (default: enabled)")
+    ] = settings.smart_chunking,
+    auto_chunk: Annotated[
+        bool, typer.Option("--auto-chunk/--no-auto-chunk",
+                          help="Automatically chunk tall images (height > max_chunk_height)")
+    ] = settings.auto_chunk,
+    context_size: Annotated[
+        Optional[int], typer.Option("--context-size",
+                                    help="Ollama context window size (e.g., 8192, 16384)")
+    ] = None,
+    temperature: Annotated[
+        Optional[float], typer.Option("--temperature",
+                                      help="LLM temperature (0.0-1.0, higher = more creative/uncertain)")
+    ] = None,
 ) -> None:
     """Process a Remarkable PDF and extract handwritten text."""
     # Setup logging
     log_level = "DEBUG" if verbose else "INFO"
     setup_logging(log_level)
     logger = get_logger("cli")
+
+    # Resolve num_ctx: CLI option takes precedence over settings
+    num_ctx = context_size if context_size is not None else settings.num_ctx
+
+    # Resolve temperature: CLI option takes precedence over settings
+    temp = temperature if temperature is not None else settings.temperature
 
     # Validate input
     if not pdf_path.exists():
@@ -131,7 +173,14 @@ def process(
 
     # Get page count
     page_count = get_page_count(pdf_path)
-    console.print(f"Processing [bold]{pdf_path.name}[/bold] ({page_count} pages)")
+    if chunk_pages:
+        chunk_mode = "smart" if smart_chunking else f"{chunk_count} fixed"
+        chunk_info = f", {chunk_mode} chunks"
+    elif auto_chunk:
+        chunk_info = ", auto-chunk enabled"
+    else:
+        chunk_info = ""
+    console.print(f"Processing [bold]{pdf_path.name}[/bold] ({page_count} pages{chunk_info})")
 
     # Process pages
     results = []
@@ -145,15 +194,71 @@ def process(
         task = progress.add_task("Processing...", total=page_count)
 
         for page_num, image in extract_pages(pdf_path):
-            progress.update(task, description=f"Page {page_num}/{page_count}")
+            # Determine if this page should be chunked
+            should_chunk = chunk_pages
+            if not should_chunk and auto_chunk and image.height > settings.max_chunk_height:
+                should_chunk = True
+                logger.info(
+                    f"Page {page_num}: Auto-chunking enabled "
+                    f"(height {image.height}px > {settings.max_chunk_height}px)"
+                )
 
-            result = process_image(
-                image=image,
-                page_num=page_num,
-                model=model,
-                host=host,
-                timeout=timeout,
-            )
+            if should_chunk:
+                # Split image into overlapping chunks
+                chunks = split_image_into_chunks(
+                    image,
+                    chunk_count=chunk_count,
+                    overlap_percent=overlap_percent,
+                    smart_chunking=smart_chunking,
+                )
+                chunk_results = []
+
+                for chunk in chunks:
+                    progress.update(
+                        task,
+                        description=f"Page {page_num}/{page_count} chunk {chunk.chunk_index + 1}/{chunk.total_chunks}"
+                    )
+
+                    # Note: previous_chunk_text disabled - it caused garbled output
+                    # on later chunks. Deduplication handles overlaps instead.
+                    chunk_result = process_image(
+                        image=chunk.image,
+                        page_num=page_num,
+                        model=model,
+                        host=host,
+                        timeout=timeout,
+                        chunk_info=(chunk.chunk_index, chunk.total_chunks),
+                        previous_chunk_text=None,
+                        num_ctx=num_ctx,
+                        temperature=temp,
+                    )
+
+                    chunk_results.append(ChunkOCRResult(
+                        text=chunk_result.text,
+                        chunk_index=chunk.chunk_index,
+                        page_num=page_num,
+                    ))
+
+                # Merge chunk texts with deduplication
+                merged_text = merge_chunk_texts(chunk_results)
+
+                result = OCRResult(
+                    text=merged_text,
+                    confidence=None,
+                    page_num=page_num,
+                )
+            else:
+                progress.update(task, description=f"Page {page_num}/{page_count}")
+
+                result = process_image(
+                    image=image,
+                    page_num=page_num,
+                    model=model,
+                    host=host,
+                    timeout=timeout,
+                    num_ctx=num_ctx,
+                    temperature=temp,
+                )
 
             # Clean the text
             result.text = clean_text(result.text)

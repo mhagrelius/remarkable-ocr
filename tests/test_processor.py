@@ -40,6 +40,20 @@ def test_clean_text_fixes_common_artifacts():
     assert clean_text("hello   world") == "hello world"  # multiple spaces
 
 
+def test_clean_text_strips_code_blocks():
+    """clean_text should strip markdown code blocks wrapping the content."""
+    from remarkable_ocr.processor import clean_text
+
+    # Simple code block
+    assert clean_text("```\nHello world\n```") == "Hello world"
+
+    # Code block with markdown language tag
+    assert clean_text("```markdown\nHello world\n```") == "Hello world"
+
+    # Content without code blocks should be unchanged
+    assert clean_text("Hello world") == "Hello world"
+
+
 def test_is_blank_page_true():
     """is_blank_page should return True for blank content."""
     from remarkable_ocr.processor import is_blank_page

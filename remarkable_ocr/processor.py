@@ -25,6 +25,10 @@ def clean_text(raw: str) -> str:
     """
     text = raw
 
+    # Strip markdown code blocks if present (model sometimes wraps output in ```)
+    text = re.sub(r"^```(?:markdown)?\n?", "", text)
+    text = re.sub(r"\n?```$", "", text)
+
     # Apply OCR corrections
     for pattern, replacement in OCR_CORRECTIONS:
         text = re.sub(pattern, replacement, text)
