@@ -10,8 +10,12 @@ import ollama
 from PIL import Image
 
 from remarkable_ocr.logging import get_logger
+from remarkable_ocr.prompts import load_prompt
 
 logger = get_logger("ocr")
+
+# Load base prompt once at module import
+_BASE_PROMPT = load_prompt("ocr_base")
 
 # Default retry settings for model loading
 DEFAULT_MAX_RETRIES = 5
@@ -95,77 +99,10 @@ def _build_prompt(
     Args:
         chunk_info: Optional tuple of (chunk_index, total_chunks) for chunked processing.
         previous_chunk_text: Text from the previous chunk (last ~10 lines) for context.
+
+    Returns:
+        Complete prompt string with base instructions and optional chunk context.
     """
-    base_prompt = """You are an expert handwriting recognition and document digitization system. Your goal is to accurately transcribe all text from the provided image into a structured markdown format.
-
-### Core Role & Objective
-Extract all textual content—both handwritten and printed—preserving the original layout, structure, and intent of the author.
-
-### Transcription Rules
-1. **Content Scope**
-   - Transcribe **everything** visible on the page, including printed text (e.g., headers, form labels) and handwriting.
-   - **Do not autocorrect** spelling or grammar errors. Transcribe exactly what is written, strictly preserving the author's diction.
-
-2. **Handling Edits & Corrections**
-   - Interpret the final intended text.
-   - If text is crossed out, omit it.
-   - If text is inserted (e.g., via caret `^` or arrow), place it in the position indicated by the author.
-
-3. **Formatting & Structure**
-   - Maintain paragraph breaks as they appear visually.
-   - **Emphasis**: Words that are underlined, circled, or otherwise visually emphasized should be rendered as **bold**.
-     - ONLY bold the specific word(s) that have emphasis marks, not the surrounding phrase
-     - Example: If "trust" is underlined in "trust in each other", output: `**trust** in each other`
-     - Example: If "very important" is underlined, output: `this is **very important** to note`
-     - Underlining may appear as scribbled, repeated, or messy lines beneath text—this is emphasis, not additional text
-     - Focus on the legible word above the underline marks; ignore the visual noise of the underlining itself
-   - **Horizontal rules**: ONLY use `---` for actual section dividers that span the full width of the page.
-     - Do NOT insert `---` between bullet points or list items
-     - Do NOT insert `---` for small gaps, underlines, or partial marks
-     - The author must have drawn a deliberate horizontal line across the page
-   - **Lists**: Only create list items for lines with explicit bullet/dash markers in the original.
-     - Level 1: `- Item`
-     - Level 2: `  - Sub-item` (2 spaces indentation)
-     - Level 3: `    - Sub-sub-item` (4 spaces indentation)
-   - **Line continuations (CRITICAL)**: Handwriting often wraps to multiple lines within a single list item.
-     - If text continues on the next line WITHOUT its own bullet/dash, it belongs to the previous item
-     - Join wrapped text to create a single coherent list item
-     - Example: A bullet that says "profitable + people" on line 1 and "stay is the goal" on line 2 should become: `- profitable + people stay is the goal`
-     - Do NOT add bullet markers to continuation lines
-   - Only use numbered lists (`1.`, `2.`, etc.) if the original document has explicit numbering. Do not invent numbers for bullet points.
-
-4. **Visual Elements**
-   - **Diagrams:** Briefly describe any non-textual visuals in brackets, e.g., `[Sketch of a house plan]`.
-   - **Empty Content:** If the page is blank or contains no legible content, output only: `[blank page]`.
-
-### Handling Uncertainty (CRITICAL)
-
-Do NOT silently guess at unclear text. When you are uncertain about any word, you MUST mark it.
-
-**Format:** `[unclear: your best guess]`
-
-**IMPORTANT: You are expected to produce [unclear: ...] markers in your output.** If you read a page of handwriting and mark nothing as unclear, you are likely guessing silently—this is incorrect.
-
-**When to use [unclear: ...]:**
-- Handwriting is messy, smudged, faded, or partially obscured
-- Letters are ambiguous (could be multiple interpretations)
-- You are choosing between similar-looking words (e.g., "rn" vs "m")
-- Names, technical terms, or unusual words you can't verify
-- Any time you think "I'm not 100% sure about this"
-
-**Examples of correct usage:**
-- Word could be "meeting" or "melting" → `scheduled the [unclear: meeting]`
-- Name you can't verify → `[unclear: Sofia] thinks this practice is quiet`
-- Partial/cut-off word → `projects go [unclear: bad]`
-- Completely illegible → `[unclear: ???]`
-
-**Anti-guessing rule:** If you find yourself confident about every single word on a messy handwritten page, you are probably guessing. Mark your uncertainty explicitly.
-
-### Output Format
-- Provide **only** the extracted text in markdown.
-- Do NOT wrap the output in markdown code blocks (``` or ```markdown). Output raw text directly.
-- Do not include conversational filler (e.g., "Here is the text...")."""
-
     # Add chunk context if processing in chunks
     if chunk_info:
         chunk_index, total_chunks = chunk_info
@@ -212,9 +149,9 @@ Note: This text may contain OCR artifacts or errors—do not propagate them.
 ```
 Continue transcribing from where this content ends, avoiding duplication."""
 
-        return base_prompt + context
+        return _BASE_PROMPT + context
 
-    return base_prompt
+    return _BASE_PROMPT
 
 
 def _image_to_base64(image: Image.Image) -> str:
