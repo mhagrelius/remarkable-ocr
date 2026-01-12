@@ -10,8 +10,13 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk
 
 from remarkable_ocr.config import Settings
-from remarkable_ocr.gui.worker import OCRWorker, ProcessingError, ProcessingResult
-from remarkable_ocr.ocr import get_available_models
+from remarkable_ocr.gui.worker import (
+    OCRWorker,
+    ProcessingError,
+    ProcessingResult,
+    ProcessingStatus,
+)
+from remarkable_ocr.ocr import get_all_models
 
 
 class MainWindow(Adw.ApplicationWindow):
@@ -73,6 +78,7 @@ class MainWindow(Adw.ApplicationWindow):
         """Build the drop zone widget."""
         frame = Gtk.Frame()
         frame.add_css_class("view")
+        frame.set_size_request(-1, 140)
         parent.append(frame)
 
         self.drop_zone = Gtk.Box(
@@ -81,7 +87,6 @@ class MainWindow(Adw.ApplicationWindow):
             valign=Gtk.Align.CENTER,
             halign=Gtk.Align.CENTER,
         )
-        self.drop_zone.set_size_request(-1, 120)
         frame.set_child(self.drop_zone)
 
         self.drop_icon = Gtk.Image(icon_name="document-open-symbolic")
@@ -214,18 +219,24 @@ class MainWindow(Adw.ApplicationWindow):
     def _load_models(self) -> None:
         """Load available models from Ollama."""
         try:
-            models = get_available_models(self._settings.ollama_host)
+            models = get_all_models(self._settings.ollama_host)
+            default_model = self._settings.model
+
+            # Ensure default model is in the list (add if not present)
+            if default_model and default_model not in models:
+                models = [default_model] + models
+
             if models:
                 model_list = Gtk.StringList.new(models)
                 self.model_dropdown.set_model(model_list)
 
-                # Select default model if available
+                # Select default model
                 for i, m in enumerate(models):
-                    if m == self._settings.model:
+                    if m == default_model:
                         self.model_dropdown.set_selected(i)
                         break
             else:
-                self._show_toast("No vision models found in Ollama")
+                self._show_toast("No models found in Ollama")
                 model_list = Gtk.StringList.new(["No models available"])
                 self.model_dropdown.set_model(model_list)
                 self.model_dropdown.set_sensitive(False)
@@ -361,14 +372,60 @@ class MainWindow(Adw.ApplicationWindow):
         self.text_buffer.set_text("")
         self._results = []
 
+        self._current_page_num = 0
+        self._page_text_start: Gtk.TextMark | None = None
+
         self._worker = OCRWorker(
             file_path=self._file_path,
             model=self._get_selected_model(),
             on_progress=self._on_worker_progress,
             on_complete=self._on_worker_complete,
             on_error=self._on_worker_error,
+            on_status=self._on_worker_status,
+            on_chunk_text=self._on_worker_chunk_text,
         )
         self._worker.start()
+
+    def _on_worker_status(self, status: ProcessingStatus) -> None:
+        """Handle status update from worker."""
+        # Calculate progress including chunk info if available
+        if status.chunk_num is not None and status.total_chunks is not None:
+            # Progress within this page based on chunks
+            page_progress = (status.chunk_num - 1) / status.total_chunks
+            # Overall progress: completed pages + partial progress on current page
+            fraction = (status.page_num - 1 + page_progress) / status.total_pages
+        else:
+            fraction = (status.page_num - 1) / status.total_pages
+
+        self.progress_bar.set_fraction(fraction)
+        self.progress_bar.set_text(status.message)
+
+        # Track when we start a new page (for chunk text management)
+        if status.page_num != self._current_page_num:
+            self._current_page_num = status.page_num
+            # Add page header and mark position for potential replacement
+            end_iter = self.text_buffer.get_end_iter()
+            if status.page_num > 1:
+                self.text_buffer.insert(end_iter, "\n\n---\n\n")
+                end_iter = self.text_buffer.get_end_iter()
+            self.text_buffer.insert(end_iter, f"# Page {status.page_num}\n\n")
+            # Mark where page content starts (after header)
+            end_iter = self.text_buffer.get_end_iter()
+            if self._page_text_start:
+                self.text_buffer.delete_mark(self._page_text_start)
+            self._page_text_start = self.text_buffer.create_mark("page_start", end_iter, True)
+
+    def _on_worker_chunk_text(self, text: str) -> None:
+        """Handle chunk text from worker - append immediately for user feedback."""
+        end_iter = self.text_buffer.get_end_iter()
+        # Add separator between chunks
+        current_text = self.text_buffer.get_text(
+            self.text_buffer.get_start_iter(), end_iter, False
+        )
+        if current_text and not current_text.endswith("\n\n"):
+            self.text_buffer.insert(end_iter, "\n\n")
+            end_iter = self.text_buffer.get_end_iter()
+        self.text_buffer.insert(end_iter, text)
 
     def _on_worker_progress(self, result: ProcessingResult) -> None:
         """Handle progress from worker."""
@@ -377,14 +434,15 @@ class MainWindow(Adw.ApplicationWindow):
         # Update progress bar
         fraction = result.page_num / result.total_pages
         self.progress_bar.set_fraction(fraction)
-        self.progress_bar.set_text(f"Page {result.page_num}/{result.total_pages}")
+        self.progress_bar.set_text(f"Page {result.page_num}/{result.total_pages} done")
 
-        # Append text
-        end_iter = self.text_buffer.get_end_iter()
-        if result.page_num > 1:
-            self.text_buffer.insert(end_iter, "\n\n---\n\n")
+        # Replace page content with final merged text (replaces chunk text if any)
+        if self._page_text_start:
+            start_iter = self.text_buffer.get_iter_at_mark(self._page_text_start)
             end_iter = self.text_buffer.get_end_iter()
-        self.text_buffer.insert(end_iter, f"# Page {result.page_num}\n\n{result.text}")
+            self.text_buffer.delete(start_iter, end_iter)
+            end_iter = self.text_buffer.get_end_iter()
+            self.text_buffer.insert(end_iter, result.text)
 
     def _on_worker_complete(self, results: list[ProcessingResult]) -> None:
         """Handle worker completion."""

@@ -276,8 +276,8 @@ def check_ollama_health(host: str, model: str) -> bool:
         return False
 
 
-def get_available_models(host: str) -> list[str]:
-    """Get list of available vision models from Ollama.
+def get_all_models(host: str) -> list[str]:
+    """Get list of all available models from Ollama.
 
     Args:
         host: Ollama API host URL
@@ -289,13 +289,7 @@ def get_available_models(host: str) -> list[str]:
         client = ollama.Client(host=host)
         response = client.list()
         models = [m.model for m in response.models if m.model]
-        # Filter to likely vision models
-        vision_keywords = ["vl", "vision", "llava", "bakllava"]
-        vision_models = [
-            m for m in models
-            if any(kw in m.lower() for kw in vision_keywords)
-        ]
-        return vision_models
+        return sorted(models)
     except httpx.ConnectError as e:
         logger.error(f"Cannot connect to Ollama at {host}: {e}")
         return []
@@ -305,6 +299,25 @@ def get_available_models(host: str) -> list[str]:
     except ollama.ResponseError as e:
         logger.error(f"Ollama API error: {e}")
         return []
+
+
+def get_available_models(host: str) -> list[str]:
+    """Get list of available vision models from Ollama.
+
+    Args:
+        host: Ollama API host URL
+
+    Returns:
+        List of model names (filtered to vision-capable models)
+    """
+    models = get_all_models(host)
+    # Filter to likely vision models
+    vision_keywords = ["vl", "vision", "llava", "bakllava"]
+    vision_models = [
+        m for m in models
+        if any(kw in m.lower() for kw in vision_keywords)
+    ]
+    return vision_models
 
 
 def process_image(

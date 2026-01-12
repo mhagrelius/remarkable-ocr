@@ -31,7 +31,67 @@ pip install .
 ```bash
 remarkable-ocr health              # Check Ollama connection
 remarkable-ocr process notes.pdf   # Extract text to ./output/notes.md
+remarkable-ocr gui                 # Launch graphical interface
 ```
+
+## Graphical Interface
+
+The GUI provides a drag-and-drop interface for processing PDFs and images.
+
+### Installation
+
+Install the GUI dependencies:
+
+```bash
+pip install remarkable-ocr[gui]
+```
+
+You also need GTK4 and libadwaita system libraries:
+
+**Linux (Fedora/RHEL)**
+```bash
+sudo dnf install gtk4-devel libadwaita-devel gobject-introspection-devel
+```
+
+**Linux (Ubuntu/Debian)**
+```bash
+sudo apt install libgtk-4-dev libadwaita-1-dev gobject-introspection
+```
+
+**Linux (Arch)**
+```bash
+sudo pacman -S gtk4 libadwaita gobject-introspection
+```
+
+**macOS**
+```bash
+brew install gtk4 libadwaita pygobject3
+```
+
+**Windows**
+
+Install [MSYS2](https://www.msys2.org/), then in the MSYS2 terminal:
+```bash
+pacman -S mingw-w64-x86_64-gtk4 mingw-w64-x86_64-libadwaita mingw-w64-x86_64-python-gobject
+```
+
+Add the MSYS2 bin directory to your PATH (typically `C:\msys64\mingw64\bin`).
+
+### Usage
+
+Launch the GUI:
+
+```bash
+remarkable-ocr gui
+```
+
+Features:
+- Drag and drop PDF or image files onto the window
+- Select OCR model from dropdown (defaults to your configured model)
+- Choose output format (Markdown, JSON, or plain text)
+- View and edit extracted text before saving
+- Copy results to clipboard or save to file
+- Progress updates for each page and chunk
 
 ## CLI Commands
 
