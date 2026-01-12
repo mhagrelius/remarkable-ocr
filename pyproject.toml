@@ -41,6 +41,7 @@ dev = [
     "pytest>=8.0.0",
     "pytest-cov>=4.0.0",
 ]
+gui = ["PyGObject>=3.46"]
 
 [project.urls]
 Homepage = "https://github.com/mhagrelius/remarkable-ocr"
