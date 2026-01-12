@@ -11,8 +11,7 @@ from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk
 
 from remarkable_ocr.config import Settings
 from remarkable_ocr.gui.worker import OCRWorker, ProcessingError, ProcessingResult
-from remarkable_ocr.ocr import OCRResult, get_available_models
-from remarkable_ocr.writer import write_output
+from remarkable_ocr.ocr import get_available_models
 
 
 class MainWindow(Adw.ApplicationWindow):
@@ -404,6 +403,13 @@ class MainWindow(Adw.ApplicationWindow):
 
     def _on_worker_error(self, error: ProcessingError) -> None:
         """Handle worker error."""
+        # Reset UI state on fatal error
+        if error.page_num is None:
+            self._worker = None
+            self.process_button.set_label("Process")
+            self.process_button.remove_css_class("destructive-action")
+            self.process_button.add_css_class("suggested-action")
+
         if error.page_num:
             self._show_toast(f"Error on page {error.page_num}: {error.message}")
         else:
@@ -439,26 +445,17 @@ class MainWindow(Adw.ApplicationWindow):
             return
 
         output_path = Path(self.output_entry.get_text())
-        output_format = self._get_selected_format()
 
-        # Build OCRResults from current text
+        # Get edited text from buffer
         start, end = self.text_buffer.get_bounds()
         text = self.text_buffer.get_text(start, end, False)
-
-        # Create single result with all text (user may have edited)
-        results = [OCRResult(text=text, confidence=None, page_num=1)]
 
         try:
             # Ensure output directory exists
             output_path.parent.mkdir(parents=True, exist_ok=True)
 
-            write_output(
-                results=results,
-                source=self._file_path,
-                output_dir=output_path.parent,
-                output_format=output_format,
-                model=self._get_selected_model(),
-            )
+            # Write directly to the user-specified path
+            output_path.write_text(text)
             self._show_toast(f"Saved to {output_path}")
         except Exception as e:
             self._show_toast(f"Save failed: {e}")

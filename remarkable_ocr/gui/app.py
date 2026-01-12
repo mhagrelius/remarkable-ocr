@@ -15,7 +15,7 @@ class RemarkableOCRApp(Adw.Application):
 
     def __init__(self) -> None:
         super().__init__(
-            application_id="com.github.remarkable-ocr",
+            application_id="com.github.remarkable_ocr",
             flags=Gio.ApplicationFlags.DEFAULT_FLAGS,
         )
 
