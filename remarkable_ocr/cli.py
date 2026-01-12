@@ -95,6 +95,23 @@ def models(
 
 
 @app.command()
+def gui() -> None:
+    """Launch the graphical user interface."""
+    try:
+        from remarkable_ocr.gui import RemarkableOCRApp
+    except ImportError:
+        err_console.print("[red]Error:[/red] GUI dependencies not installed")
+        err_console.print("\nInstall with: pip install remarkable-ocr[gui]")
+        err_console.print("Also ensure GTK4 and libadwaita are installed:")
+        err_console.print("  Fedora: dnf install gtk4-devel libadwaita-devel")
+        err_console.print("  Ubuntu: apt install libgtk-4-dev libadwaita-1-dev")
+        raise typer.Exit(1)
+
+    app = RemarkableOCRApp()
+    app.run(None)
+
+
+@app.command()
 def process(
     pdf_path: Annotated[Path, typer.Argument(help="Path to PDF file")],
     output: Annotated[
