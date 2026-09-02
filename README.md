@@ -1,5 +1,7 @@
 # remarkable-ocr
 
+> **Superseded** by [remarkable](https://github.com/mhagrelius/remarkable), a Rust/GTK rewrite that turns exports into structured Markdown. This repository is kept for reference.
+
 Extract handwritten text from reMarkable tablet PDF exports using local OCR via Ollama.
 
 ## Prerequisites
